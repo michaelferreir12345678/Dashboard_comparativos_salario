@@ -33,7 +33,7 @@ def exibir_tabela_salarios(TC, TR, num_classes, num_referencias, salario_base, n
             
             # Armazenando o valor no dicionário
             valores[(i, j)] = valor, i + (j - 1) * num_referencias
-            tabela.loc[i, j] = f"{valor:.2f}"  # Atribuindo o índice da célula
+            tabela.loc[i, j] = f"{valor:.2f}"  # Atribuindo o índice da célula com duas casas decimais
                         
     # Renomeando índices e colunas
     tabela.index.name = 'Referência'
@@ -41,8 +41,18 @@ def exibir_tabela_salarios(TC, TR, num_classes, num_referencias, salario_base, n
     
     return tabela, valores
 
-
+def contar_pessoas(df):
+    # Contar pessoas por cargo, carga horária e referência
+    quantidade_pessoas = df.groupby(['Cargo', 'CH', 'Ref'])['VENCIMENTO BASE'].size().reset_index(name='Quantidade')
     
+    # Calcular o consolidado do VENCIMENTO BASE
+    consolidado_vencimento_base = df.groupby(['Cargo', 'CH', 'Ref'])['VENCIMENTO BASE'].sum().reset_index(name='Consolidado VENCIMENTO BASE')
+    
+    # Concatenar o consolidado com a tabela de quantidade de pessoas
+    quantidade_pessoas = pd.merge(quantidade_pessoas, consolidado_vencimento_base, on=['Cargo', 'CH', 'Ref'])
+    
+    return quantidade_pessoas
+
 def main():
     st.header(' :orange[Prefeitura de Fortaleza] ', divider='rainbow'   )
     col1 = st.columns(1)
@@ -88,6 +98,7 @@ def main():
 
     # Exibir e atualizar a tabela de salários por classe e referência (Tabela 1)
     tabela_salarios1, valores1 = exibir_tabela_salarios(TC1, TR1, num_classes1, num_referencias1, salario_base1, 'Tabela personalizável')
+    col2.write("Tabela Personalizável")
     tabela_salarios1 = col2.dataframe(tabela_salarios1, use_container_width=True)
     
     indice_desejado = 6 # Índice desejado
@@ -100,17 +111,34 @@ def main():
     # Exibir e atualizar a tabela de salários por classe e referência (Tabela B)
     if tabela_selecionada == 'Tabela B - 180h':
         tabela_salarios_b, valores_b = exibir_tabela_salarios(1.05, 1.02, num_classes_b, num_referencias_b, salario_base_b, 'Tabela B - 180h')
+        col3.write("Tabela B - 180h")
         col3.dataframe(tabela_salarios_b, use_container_width=True)
 
     # Exibir e atualizar a tabela de salários por classe e referência (Tabela C)
     if tabela_selecionada == 'Tabela C - 180h':
         tabela_salarios_c, valores_c = exibir_tabela_salarios(1.05, 1.02, num_classes_c, num_referencias_c, salario_base_c, 'Tabela C - 180h')
+        col3.write("Tabela C - 180h")
         col3.dataframe(tabela_salarios_c, use_container_width=True)
 
     # Exibir e atualizar a tabela de salários por classe e referência (Tabela D)
     if tabela_selecionada == 'Tabela D - 180h':
         tabela_salarios_d, valores_d = exibir_tabela_salarios(1.05, 1.02, num_classes_d, num_referencias_d, salario_base_d, 'Tabela D - 180h')
+        col3.write("Tabela D - 180h")
         col3.dataframe(tabela_salarios_d, use_container_width=True)
+
+    # Quantidade de pessoas por cargo, carga horária e referência
+    quantidade_pessoas = contar_pessoas(df)
+    
+    # Adicionando o totalizador geral
+    total_quantidade = quantidade_pessoas['Quantidade'].sum()
+    total_cons_venc_base = quantidade_pessoas['Consolidado VENCIMENTO BASE'].sum()
+    total_geral = pd.DataFrame({'Cargo': ['Total Geral'], 'CH': [''], 'Ref': [''], 'Quantidade': [total_quantidade], 'Consolidado VENCIMENTO BASE': [total_cons_venc_base]})
+    
+    quantidade_pessoas = pd.concat([quantidade_pessoas, total_geral], ignore_index=True)
+    
+    quantidade_pessoas.insert(0, "Tabela", "Tabela 1")  # Adicionando a informação da tabela
+    st.write("Quantidade de pessoas por cargo, carga horária e referência:")
+    st.dataframe(quantidade_pessoas)
 
 if __name__ == '__main__':
     main()
