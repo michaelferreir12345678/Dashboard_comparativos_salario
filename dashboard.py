@@ -5,7 +5,7 @@ import locale
 
 st.set_page_config(layout="wide")
 
-locale.setlocale(locale.LC_ALL, 'pt_BR')
+# locale.setlocale(locale.LC_ALL, 'pt_BR')
 
 # Função para carregar os dados do Excel
 @st.cache_data
