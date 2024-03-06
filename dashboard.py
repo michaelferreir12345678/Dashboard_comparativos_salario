@@ -1,26 +1,22 @@
 import streamlit as st
 import pandas as pd
 import locale
+import plotly.express as px
 
 
-st.set_page_config(layout="wide")
+st.set_page_config(layout="wide",page_title="Prefeitura de Fortaleza", page_icon='./logo.png')
 
-# locale.setlocale(locale.LC_ALL, 'pt_BR')
+locale.setlocale(locale.LC_ALL, 'pt_BR.UTF-8')
 
 # Função para carregar os dados do Excel
 @st.cache_data
 def carregar_dados():
-    return pd.read_excel("planilha_impacto_salarial.xlsx", sheet_name="amc")
+    return pd.read_excel("planilha_impacto_salarial.xlsx", sheet_name="amc", decimal=',')
 
 # Função para substituir o ponto pela vírgula nos valores do DataFrame
 @st.cache_data
 def substituir_ponto_por_virgula(df):
     return df.applymap(lambda x: str(x).replace('.', ','))
-
-# Função para calcular a média salarial de cada cargo
-@st.cache_data
-def calcular_media_salarial(df):
-    return df.groupby('Cargo')['VENCIMENTO BASE'].mean()
 
 # Função para criar e exibir a tabela de salários por classe e referência
 @st.cache_data
@@ -28,16 +24,15 @@ def exibir_tabela_salarios(TC, TR, num_classes, num_referencias, salario_base, n
     # Criando um DataFrame para armazenar os resultados
     tabela = pd.DataFrame(index=range(1, num_referencias + 1), columns=range(1, num_classes + 1))
     valores = {}  # Dicionário para armazenar os valores
-    
     # Preenchendo a tabela com os valores de salário
     for j in range(1, num_classes + 1):
         for i in range(1, num_referencias + 1):
             if i == 1 and j == 1:
                 valor = salario_base
             elif i == 1:
-                valor = float(tabela.loc[num_referencias, j - 1]) * TC
+                valor = float(tabela.loc[num_referencias, j - 1]) * (1+(TC/100))
             else:
-                valor = float(tabela.loc[i - 1, j]) * TR
+                valor = float(tabela.loc[i - 1, j]) * (1+(TR/100))
             
             # Armazenando o valor no dicionário
             valores[(i, j)] = valor, i + (j - 1) * num_referencias
@@ -92,127 +87,69 @@ def calcular_irpf(base_irpf):
         return base_irpf*0.075-142.8
     else:
         return 0
-
+    
+def calcular_novo_salario(df, salario_base_b_180,salario_base_c_180,salario_base_d_180,salario_base_b_240,salario_base_c_240,salario_base_d_240, pular_indice=0):
+    novo_salario = []  
+    for indice_ref, ch, primeiro_caractere in zip(df['Ref'],df['CH'],df['primeiro_caractere']): 
+            indice_alvo = indice_ref + pular_indice
+            if ch == 180 and primeiro_caractere == 'B':
+                tabela = salario_base_b_180
+            elif ch == 180 and primeiro_caractere == 'C':
+                tabela = salario_base_c_180                
+            elif ch == 180 and primeiro_caractere == 'D':
+                tabela = salario_base_d_180     
+            elif ch == 240 and primeiro_caractere == 'B':
+                tabela = salario_base_b_240       
+            elif ch == 240 and primeiro_caractere == 'C':
+                tabela = salario_base_c_240       
+            elif ch == 240 and primeiro_caractere == 'D':
+                tabela = salario_base_d_240            
+            for chave, valor in tabela.items():
+                if indice_alvo == valor[1]:
+                    novo_salario.append(valor[0])
+                    break  #Encerrar o loop interno após encontrar a correspondência
+            else:
+                novo_salario.append(None)  # Adicionar None se não houver correspondência encontrada
+    return novo_salario
 
 def main():
-        
-    st.header(' :orange[Prefeitura de Fortaleza] ', divider='rainbow'   )
-    col1 = st.columns(1)
-    col2, col3 = st.columns(2)    
+    
+    st.header(' :orange[Prefeitura de Fortaleza] ', divider='rainbow')
     
     # Carregar dados
     df = carregar_dados()
 
-    # Adicionando imagem centralizada acima do título da sidebar
-    st.sidebar.image('logo.jpg', width=150, use_column_width=True)
-
-    # Exibir filtro de cargo no painel lateral
-    cargo_selecionado = st.sidebar.selectbox('Selecione um cargo:', df['Cargo'].unique())
+    df['primeiro_caractere'] = df['Niv'].str.slice(0, 1)
     
-    # Opção para escolher qual tabela será exibida
-    tabela_selecionada = st.sidebar.selectbox('Selecione a tabela:', ['Tabela B - 180h', 'Tabela C - 180h', 'Tabela D - 180h','Tabela B - 240h', 'Tabela C - 240h', 'Tabela D - 240h'])
+    # Adicionando imagem centralizada acima do título da sidebar
+    st.sidebar.image('logo.png', width=150, use_column_width=True)
 
     st.sidebar.header('Configurações')
     indice_tabela = st.sidebar.number_input('Enquadramento:', min_value=0, value=0)
 
-
-    # Calcular média salarial de cada cargo
-    media_salarial_cargos = calcular_media_salarial(df)
-
     # Parâmetros Tabela 1
-    st.sidebar.subheader('Tabela Personalizável')
-    TC1 = st.sidebar.number_input('Taxa de Classe:', value=1.05)
-    TR1 = st.sidebar.number_input('Taxa de Referência:', value=1.02)
+    TC1 = st.sidebar.number_input('Taxa de Classe (%):', value=2)
+    TR1 = st.sidebar.number_input('Taxa de Referência (%):', value=2)
     num_classes1 = st.sidebar.number_input('Número de Classes:', value=5, min_value=1)
     num_referencias1 = st.sidebar.number_input('Número de Referências:', value=6, min_value=1)
     salario_base1 = st.sidebar.number_input('Salário Base:', value=1160.66, min_value=0.0)
 
-    # Parâmetros Tabela B - 180h
-    num_classes_b_180 = 5
-    num_referencias_b_180 = 6
     salario_base_b_180 = 886.29
-
-    # Parâmetros Tabela C - 180h
-    num_classes_c_180 = 5
-    num_referencias_c_180 = 6
     salario_base_c_180 = 1160.66
-
-    # Parâmetros Tabela D - 180h
-    num_classes_d_180 = 5
-    num_referencias_d_180 = 6
     salario_base_d_180 = 1582.67
-    
-    # Parâmetros Tabela B - 240h
-    num_classes_b_240 = 5
-    num_referencias_b_240 = 6
     salario_base_b_240 = 1181.71
-
-    # Parâmetros Tabela C - 240h
-    num_classes_c_240 = 5
-    num_referencias_c_240 = 6
     salario_base_c_240 = 1547.55
-
-    # Parâmetros Tabela D - 240h
-    num_classes_d_240 = 5
-    num_referencias_d_240 = 6
     salario_base_d_240 = 2110.22
-
-    # Exibir e atualizar a tabela de salários por classe e referência (Tabela 1)
-    tabela_salarios1, valores1 = exibir_tabela_salarios(TC1, TR1, num_classes1, num_referencias1, salario_base1, 'Tabela personalizável')
-    col2.write("Tabela Personalizável")
-    tabela_salarios1 = col2.dataframe(tabela_salarios1, use_container_width=True)
-    
-    def calcular_novo_salario(df, valores_tabela1, pular_indice=0):
-        novo_salario = []   
-        for indice_ref in df['Ref']:
-            indice_alvo = indice_ref + pular_indice
-            for chave, valor in valores_tabela1.items():
-                if indice_alvo == valor[1]:
-                    novo_salario.append(valor[0])
-                    break  # Encerrar o loop interno após encontrar a correspondência
-            else:
-                novo_salario.append(None)  # Adicionar None se não houver correspondência encontrada
-        return novo_salario
-                    
     
     # Calcular novo salário usando a Tabela 1
-    df['Novo Salário'] = calcular_novo_salario(df, valores1, pular_indice=indice_tabela)
+    tabela_salarios_b_180, valores_b_180 = exibir_tabela_salarios(TC1, TR1, num_classes1, num_referencias1, salario_base_b_180, 'Tabela B - 180h')
+    tabela_salarios_c_180, valores_c_180 = exibir_tabela_salarios(TC1, TR1, num_classes1, num_referencias1, salario_base_c_180, 'Tabela C - 180h')
+    tabela_salarios_d_180, valores_d_180 = exibir_tabela_salarios(TC1, TR1, num_classes1, num_referencias1, salario_base_d_180, 'Tabela D - 180h')
+    tabela_salarios_b_240, valores_b_240 = exibir_tabela_salarios(TC1, TR1, num_classes1, num_referencias1, salario_base_b_240, 'Tabela B - 240h')
+    tabela_salarios_c_240, valores_c_240 = exibir_tabela_salarios(TC1, TR1, num_classes1, num_referencias1, salario_base_c_240, 'Tabela C - 240h')
+    tabela_salarios_d_240, valores_d_240 = exibir_tabela_salarios(TC1, TR1, num_classes1, num_referencias1, salario_base_d_240, 'Tabela D - 240h')
 
-    # Exibir e atualizar a tabela de salários por classe e referência (Tabela B)
-    if tabela_selecionada == 'Tabela B - 180h':
-        tabela_salarios_b_240, valores_b_240 = exibir_tabela_salarios(1.05, 1.02, num_classes_b_180, num_referencias_b_180, salario_base_b_180, 'Tabela B - 180h')
-        col3.write("Tabela B - 180h")
-        col3.dataframe(tabela_salarios_b_240.round(2), use_container_width=True)
-
-    # Exibir e atualizar a tabela de salários por classe e referência (Tabela C)
-    if tabela_selecionada == 'Tabela C - 180h':
-        tabela_salarios_c_240, valores_c_240 = exibir_tabela_salarios(1.05, 1.02, num_classes_c_180, num_referencias_c_180, salario_base_c_180, 'Tabela C - 180h')
-        col3.write("Tabela C - 180h")
-        col3.dataframe(tabela_salarios_c_240.round(2), use_container_width=True)
-        
-    # Exibir e atualizar a tabela de salários por classe e referência (Tabela D)
-    if tabela_selecionada == 'Tabela D - 180h':
-        tabela_salarios_d_240, valores_d_240 = exibir_tabela_salarios(1.05, 1.02, num_classes_d_180, num_referencias_d_180, salario_base_d_180, 'Tabela D - 180h')
-        col3.write("Tabela D - 180h")
-        col3.dataframe(tabela_salarios_d_240.round(2), use_container_width=True)
-        
-        # Exibir e atualizar a tabela de salários por classe e referência (Tabela B)
-    if tabela_selecionada == 'Tabela B - 240h':
-        tabela_salarios_b_240, valores_b_240 = exibir_tabela_salarios(1.05, 1.02, num_classes_b_240, num_referencias_b_240, salario_base_b_240, 'Tabela B - 180h')
-        col3.write("Tabela B - 240h")
-        col3.dataframe(tabela_salarios_b_240.round(2), use_container_width=True)
-
-    # Exibir e atualizar a tabela de salários por classe e referência (Tabela C)
-    if tabela_selecionada == 'Tabela C - 240h':
-        tabela_salarios_c_240, valores_c_240 = exibir_tabela_salarios(1.05, 1.02, num_classes_c_240, num_referencias_c_240, salario_base_c_240, 'Tabela C - 180h')
-        col3.write("Tabela C - 240h")
-        col3.dataframe(tabela_salarios_c_240.round(2), use_container_width=True)
-
-    # Exibir e atualizar a tabela de salários por classe e referência (Tabela D)
-    if tabela_selecionada == 'Tabela D - 240h':
-        tabela_salarios_d_240, valores_d_240 = exibir_tabela_salarios(1.05, 1.02, num_classes_d_240, num_referencias_d_240, salario_base_d_240, 'Tabela D - 180h')
-        col3.write("Tabela D - 240h")
-        col3.dataframe(tabela_salarios_d_240.round(2), use_container_width=True)
+    df['Novo Salário'] = calcular_novo_salario(df, valores_b_180,valores_c_180,valores_d_180,valores_b_240,valores_c_240,valores_d_240, pular_indice=indice_tabela)    
 
     # Quantidade de pessoas por cargo, carga horária e referência
     quantidade_pessoas = contar_pessoas(df)
@@ -241,16 +178,12 @@ def main():
     provisao_decimo_impacto = (total_impacto/12)
     provisao_ipm_rem_anterior = (total_vencimento_base + provisao_ferias_rem_anterior + provisao_decimo_rem_anterior) * 0.04
     provisao_ipm_nova = ((total_novo_salario + provisao_ferias_nova + provisao_decimo_nova) * 0.04)
-    provisao_ipm_impacto = (total_impacto + provisao_ferias_nova + provisao_decimo_impacto) * 0.04
-    ipm_previfor_anterior = df['0801-IPM PREVFOR'].sum() 
+    provisao_ipm_impacto = provisao_ipm_nova - provisao_ipm_rem_anterior 
+    ipm_previfor_anterior = df['IPM PREVFOR-PATRONAL'].sum()
     
 
     # Adicionar linha com totais à tabela do novo salário
     tabela_com_novo_salario.loc['Total', ['VENCIMENTO BASE', 'Novo Salário']] = [total_vencimento_base, total_novo_salario]
-
-    # Nova tabela com o novo salário calculado
-    st.write("Nova tabela com o novo salário calculado usando a Tabela 1:")
-    st.dataframe(tabela_com_novo_salario.round(2))
 
     # Calcular o resumo dos cargos
     resumo_cargos = calcular_impacto(df)
@@ -270,12 +203,12 @@ def main():
     df['novo_0107-ANUENIO'] = (df['REF-ANUENIO'] * df['Novo Salário']) / 100
     df['nova_105-INSALUBRIDAD'] = (df['REF-INSALUBRIDAD'] * df['Novo Salário']) / 100
     df['nova_0118-GR.PRODUT_'] = (df['REF-GR.PRODUT'] * df['Novo Salário']) / 100
-    df['nova_0096-GAT'] = (df['REF-GAT'] * df['Novo Salário']) / 100
+    df['nova_0096-GAT'] = df['Novo Salário'] * df['REF-GAT'] / 100
     df['nova_0097-GEEF-AMC'] = (df['REF-GEEF-AMC'] * df['Novo Salário']) / 100
     df['nova_0159-GR.R.VIDA'] = (df['REF-GR.R.VIDA'] * df['Novo Salário']) / 100
     df['nova_0318-GE AMC'] = (df['REF-GE AMC'] * df['Novo Salário']) / 100
-    df['novo_0817-B HR INC'] = df['0223-VP'] + df['0248-VPNI HEI'] + df['0001-G.F.INC-DNI1'] + df['0004-G.R.INC.DAS1'] + df['0005-G.R.INC.DAS2'] + df['0006-G.R.INC.DAS3'] + df['0007-G.R.INC.DNS1'] + df['0008-G.R.INC.DNS2'] + df['0009-G.R.INC.DNS3'] + df['0026-GR INC AT1'] + df['0027-GR INC AT2'] + df['Novo Salário'] + df['novo_0085-ITA'] + df['novo_0107-ANUENIO'] + df['nova_105-INSALUBRIDAD'] + df['nova_0118-GR.PRODUT_'] + df['nova_0096-GAT'] + df['nova_0097-GEEF-AMC'] + df['nova_0159-GR.R.VIDA'] + df['nova_0318-GE AMC']
-    df['nova_0133-HR.EXTR.INCO'] = df['novo_0817-B HR INC'] / df['CH'] * 1.25 * df['REF-HR.EXTR.INCO']
+    df['novo_0817-B HR INC'] = df['0223-VP'] + df['0248-VPNI HEI'] + df['0001-G.F.INC-DNI1'] + df['0004-G.R.INC.DAS1'] + df['0005-G.R.INC.DAS2'] + df['0006-G.R.INC.DAS3'] + df['0007-G.R.INC.DNS1'] + df['0008-G.R.INC.DNS2'] + df['0009-G.R.INC.DNS3'] + df['0026-GR INC AT1'] + df['0027-GR INC AT2'] + df['Novo Salário'] + df['novo_0085-ITA'] + df['novo_0107-ANUENIO'] + df['nova_105-INSALUBRIDAD'] + df['nova_0118-GR.PRODUT_'] + df['nova_0159-GR.R.VIDA'] + df['nova_0318-GE AMC']
+    df['nova_0133-HR.EXTR.INCO'] = round(df['novo_0817-B HR INC'] / df['CH'] * 1.25 * df['REF-HR.EXTR.INCO'],2)
     df['novo_0996-TOT.PROVENTO'] = df['Novo Salário'] + df['novo_0085-ITA'] + df['novo_0107-ANUENIO'] + df['nova_105-INSALUBRIDAD'] + df['nova_0118-GR.PRODUT_'] + df['nova_0096-GAT'] + df['nova_0097-GEEF-AMC'] + df['nova_0159-GR.R.VIDA'] + df['nova_0318-GE AMC'] + df['nova_0133-HR.EXTR.INCO'] + df['0223-VP'] + df['0248-VPNI HEI'] + df['0001-G.F.INC-DNI1'] + df['0004-G.R.INC.DAS1'] + df['0005-G.R.INC.DAS2'] + df['0006-G.R.INC.DAS3'] + df['0007-G.R.INC.DNS1'] + df['0008-G.R.INC.DNS2'] + df['0009-G.R.INC.DNS3'] + df['0026-GR INC AT1'] + df['0027-GR INC AT2'] + df['0308-DIF.AJ.PCCS'] + df['0320-GAJ 9903/12'] + df['0170-DIR.NIV.SUPE'] + df['0174-VRB.ESP.REP'] + df['0180-DIR.ASS.SUPE'] + df['0190-DIR.NIV.INT.'] + df['058-DIR GER 01'] + df['0326-GTRTC                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           '] + df['0206-AB.PERMANENC']
     df['nova_0872-B HR NOTURNA'] = df['nova_0133-HR.EXTR.INCO'] + df['0223-VP'] + df['0223-VP'] + df['0248-VPNI HEI'] + df['0001-G.F.INC-DNI1'] + df['0004-G.R.INC.DAS1'] + df['0005-G.R.INC.DAS2'] + df['0006-G.R.INC.DAS3'] + df['0007-G.R.INC.DNS1'] + df['0008-G.R.INC.DNS2'] + df['0009-G.R.INC.DNS3'] + df['0026-GR INC AT1'] + df['0027-GR INC AT2'] + df['Novo Salário'] + df['novo_0085-ITA'] + df['novo_0107-ANUENIO'] + df['nova_105-INSALUBRIDAD'] + df['nova_0118-GR.PRODUT_'] + df['nova_0096-GAT'] + df['nova_0097-GEEF-AMC'] + df['nova_0159-GR.R.VIDA'] + df['nova_0318-GE AMC']
     df['nova_0099-HR NOTURNAS'] = df['nova_0872-B HR NOTURNA'] / df['CH'] * 0.2 * df['REF-HR NOTURNAS']
@@ -288,18 +221,16 @@ def main():
     df['nova_IRPF'] = df['nova_base_IRPF'].apply(calcular_irpf)
     
     nova_ipm_previfor = df['nova_IPM PREVFOR-PATRONAL'].sum()    
-    resumo_cargos.loc[len(resumo_cargos)] = ['IPM – PREVIFOR-FIN (28%)', '', ipm_previfor_anterior, nova_ipm_previfor, provisao_ferias_impacto]
+    ipm_previfor_impacto = nova_ipm_previfor - ipm_previfor_anterior
+
+    resumo_cargos.loc[len(resumo_cargos)] = ['IPM – PREVIFOR-FIN (28%)', '', ipm_previfor_anterior, nova_ipm_previfor, ipm_previfor_impacto]
     
     impacto_mensal_ant = total_vencimento_base + provisao_ferias_rem_anterior + provisao_decimo_rem_anterior + provisao_ipm_rem_anterior + ipm_previfor_anterior
     impacto_mensal_novo = total_novo_salario+provisao_ferias_nova + provisao_decimo_nova + provisao_ipm_nova + nova_ipm_previfor
-    impacto_mensal_impacto = total_impacto + provisao_ferias_impacto + provisao_decimo_impacto + provisao_ipm_impacto + provisao_ferias_impacto
+    impacto_mensal_impacto = impacto_mensal_novo - impacto_mensal_ant
     resumo_cargos.loc[len(resumo_cargos)] = ['IMPACTO MENSAL', '', impacto_mensal_ant, impacto_mensal_novo, impacto_mensal_impacto]
     resumo_cargos.loc[len(resumo_cargos)] = ['IMPACTO ANUAL', '', impacto_mensal_ant*12, impacto_mensal_novo*12, impacto_mensal_impacto*12]
     
-    
-    # Exibir a tabela de resumo de cargos
-    st.header("Impacto da Reestruturação do PCCS da Gestão do Trânsito:")
-    st.dataframe(resumo_cargos.applymap(lambda x: locale.currency(x, grouping=True).format(x) if isinstance(x, (int, float)) else x))
         
     # Calcular imposto de renda para a Remuneração Anterior e Nova
     imposto_renda_anterior = df['IRPF'].sum()
@@ -324,7 +255,87 @@ def main():
     valor_anual_anterior = valor_mensal_anterior * 12
     valor_anual_novo = valor_mensal_novo * 12
     impacto_anual = valor_anual_novo - valor_anual_anterior
+    
+    
+    # ------------------------------------------------------------------ TABELAS, GRÁFICOS E DATAFRAMES ------------------------------------------------------------ #
+    
+    impacto_mensal_total = locale.currency(impacto_mensal + impacto_mensal_impacto, grouping=True)
+    impacto_anual_total = locale.currency(impacto_anual + (impacto_mensal_impacto * 12), grouping=True)
+    
+    variacao_mensal_liquida = locale.currency(valor_mensal_novo + impacto_mensal_novo, grouping=True)
+    variacao_anual_liquida = locale.currency(valor_anual_novo + (impacto_mensal_novo*12), grouping=True)
+    
+    percentual_efetivo_aumento_mensal = ((impacto_mensal + impacto_mensal_impacto)/(valor_mensal_anterior + impacto_mensal_ant))*100
 
+    # col1, col2 = st.columns(2)
+    st.markdown('##### **PERCENTUAL AUMENTO EFETIVO:**')
+    st.info(f'{round(percentual_efetivo_aumento_mensal,2)} %')
+
+
+    col1, col2 = st.columns(2)
+    col1.text('Novo Valor da folha Mensal: ')
+    col1.info(variacao_mensal_liquida)
+    col2.text('Novo Valor da folha Anual: ')
+    col2.info(variacao_anual_liquida)
+
+    col1, col2  = st.columns(2)
+    col1.text('Impacto total Mensal:')
+    col1.info(impacto_mensal_total,)
+    col2.text('Impacto total Anual: ')
+    col2.info(impacto_anual_total)
+    
+    # Calcular as remunerações totais antes e depois
+    remuneracao_total_anterior = valor_mensal_anterior + impacto_mensal_ant
+    remuneracao_total_nova = valor_mensal_novo + impacto_mensal_novo
+
+    # Criar um DataFrame com os totais de remuneração anterior e nova
+    df_plot = pd.DataFrame({
+        'Remuneração Total Anterior': [remuneracao_total_anterior.sum()],
+        'Remuneração Total Nova': [remuneracao_total_nova.sum()]
+    })
+
+    # Derreter o DataFrame para tornar as colunas de remuneração total em uma coluna
+    df_plot_melted = df_plot.melt(value_name='Remuneração Total')
+
+    # Criar o gráfico
+    fig_date = px.bar(df_plot_melted, x=df_plot_melted.index, y='Remuneração Total', 
+                        title='Valores Antes e Depois',
+                        labels={'Remuneração Total': 'Valor', 'index': 'Tipo'},
+                        color='variable')
+
+    # Exibir o gráfico
+    st.plotly_chart(fig_date, use_container_width=False)
+
+    # res = card(
+    # title="Streamlit Card",
+    # text="This is a test card",
+    # image="https://placekitten.com/500/500",
+    # styles={
+    #     "card": {
+    #         "width": "200px",
+    #         "height": "200px",
+    #         "border-radius": "60px",
+    #         "box-shadow": "0 0 10px rgba(0,0,0,0.5)",
+    #     },
+    #     "filter": {
+    #         "background-color": "rgba(0, 0, 0, 0)"  # <- make the image not dimmed anymore
+    #     }
+    # }
+    # )
+    
+    # Nova tabela com o novo salário calculado
+    st.write("Nova tabela com o novo salário calculado usando a Tabela 1:")
+    st.dataframe(tabela_com_novo_salario.round(2))
+    
+    # Exibir e atualizar a tabela de salários por classe e referência (Tabela 1)
+    tabela_salarios1, valores1 = exibir_tabela_salarios(TC1, TR1, num_classes1, num_referencias1, salario_base1, 'Tabela personalizável')
+    st.write("Tabela Personalizável")
+    tabela_salarios1 = st.dataframe(tabela_salarios1, use_container_width=True)
+    
+    # Exibir a tabela de resumo de cargos
+    st.header("Impacto da Reestruturação do PCCS da Gestão do Trânsito:")
+    st.dataframe(resumo_cargos.applymap(lambda x: locale.currency(x, grouping=True).format(x) if isinstance(x, (int, float)) else x))
+    
     # Criar DataFrame com os resultados
     dados = {
         'Item': ['IMPOSTO DE RENDA', 'IPM-PREVIFOR (Patronal)', 'IPM-PREVIFOR (Servidor)', 'VALOR MENSAL', 'VALOR ANUAL'],
@@ -354,7 +365,7 @@ def main():
         'Remuneração Nova': [valor_mensal_novo + impacto_mensal_novo, valor_anual_novo + (impacto_mensal_novo*12) ],
         'Impacto': [impacto_mensal + impacto_mensal_impacto,  impacto_anual + (impacto_mensal_impacto*12)]
     }
-    
+        
     tabela_dados_totais = pd.DataFrame(dados_totais)
 
     # Formatando valores para exibição
@@ -364,6 +375,7 @@ def main():
     
     st.header("Totais:")
     st.dataframe(tabela_dados_totais)
+    
     
 if __name__ == '__main__':
     main()
